@@ -10,7 +10,7 @@ int main(int argc, char **argv)
   win.set_title("simul");
   win.set_default_size(800,800);
 
-  Balls balls;
+  Balls balls(23);
   win.add(balls);
   balls.show();
 

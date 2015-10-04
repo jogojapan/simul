@@ -14,9 +14,9 @@ bool Balls::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
   cr->scale(width, height);
 
   cr->set_line_width(0.001);
-  cr->set_source_rgb(0.2,0.2,0.2);
   for (auto ball : balls_)
     {
+      cr->set_source_rgb(ball.color_r,ball.color_g,ball.color_b);
       cr->arc(ball.p.x,ball.p.y,
               ball.rad,
               0,2*M_PI);
