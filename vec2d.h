@@ -51,5 +51,8 @@ struct Vec
 inline double dot(Vec v1, Vec v2)
 { return (v1.x*v2.x + v1.y*v2.y); }
 
+inline double norm(Vec v)
+{ return (sqr(v.x) + sqr(v.y)); }
+
 inline Vec operator*(double scalar, Vec v)
 { return { scalar * v.x , scalar * v.y }; }

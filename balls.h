@@ -60,7 +60,7 @@ public:
         color_r(r),
         color_g(g),
         color_b(b),
-        recent_collision { nullptr , 0 }
+        recent_collision(nullptr,0)
     { }
 
     Ball()
@@ -73,7 +73,7 @@ public:
   {
     static std::uniform_real_distribution<double> pos_dist(0,1);
     static std::uniform_real_distribution<double> speed_dist(0.00001,0.0003);
-    static std::uniform_real_distribution<double> mass_dist(0.01,0.5);
+    static std::uniform_real_distribution<double> mass_dist(0.01,0.2);
 
     return {
         { pos_dist(rand_), pos_dist(rand_) },
@@ -113,64 +113,83 @@ protected:
   void update_balls()
   {
     for (auto &ball : balls_)
-        ball.p += time_lapse * ball.v;
+      //    ball.p += ball.v;
+      ball.p += time_lapse * ball.v;
 
     collisions();
-
-    for (auto &ball : balls_)
-      if (ball.recent_collision.second > 0)
-        ball.recent_collision.second -= 1;
   }
 
   void collisions()
   {
     using std::make_pair;
+    using std::numeric_limits;
+    static const double eps = numeric_limits<double>::epsilon();
 
     for (auto &ball : balls_)
       {
+        if (ball.recent_collision.second > 0)
+          --ball.recent_collision.second;
+        if (ball.recent_collision.second == 0)
+          ball.recent_collision.first = nullptr;
+
         /* Check for collisions with wall. */
-        if ((ball.p.x - ball.rad < std::numeric_limits<double>::epsilon())
-            || (ball.p.x + ball.rad > 1.0 - std::numeric_limits<double>::epsilon()))
-          ball.v.x = -ball.v.x;
-        if ((ball.p.y - ball.rad < std::numeric_limits<double>::epsilon())
-            || (ball.p.y + ball.rad > 1.0 - std::numeric_limits<double>::epsilon()))
-          ball.v.y = -ball.v.y;
+        if (ball.p.x - ball.rad < 0)
+          {
+            ball.p.x = ball.rad + eps;
+            ball.v.x = -ball.v.x;
+          }
+        if (ball.p.x + ball.rad > 1.0)
+          {
+            ball.p.x = 1.0 - ball.rad - eps;
+            ball.v.x = -ball.v.x;
+          }
+        if (ball.p.y - ball.rad < 0)
+          {
+            ball.p.y = ball.rad + eps;
+            ball.v.y = -ball.v.y;
+          }
+        if (ball.p.y + ball.rad > 1.0)
+          {
+            ball.p.y = 1 - ball.rad - eps;
+            ball.v.y = -ball.v.y;
+          }
       }
 
-    foreach_two(begin(balls_),end(balls_),[](auto &ball, auto &oball) {
-        if (ball.recent_collision.second > 0 && ball.recent_collision.first == &oball)
+    foreach_two(begin(balls_),end(balls_),[](auto &ball1, auto &ball2) {
+        if ((ball1.recent_collision.first == &ball2)
+            || (ball2.recent_collision.first == &ball1))
           return;
 
-        auto deltap = ball.p - oball.p;
+        auto deltap = ball1.p - ball2.p;
         double sqr_dist = sqr(deltap.x) + sqr(deltap.y);
-        double sqr_rad  = sqr(ball.rad + oball.rad);
+        double sqr_rad  = sqr(ball1.rad + ball2.rad);
 
         if (sqr_dist < sqr_rad)
           {
             /* Collision of two balls. */
             double dist = ::sqrt(sqr_dist);
-            Vec min_trans_dist = ((ball.rad + oball.rad - dist) / dist) * deltap;
+            Vec min_trans_dist = ((ball1.rad + ball2.rad - dist) / dist) * deltap;
 
-            double im1 = 1 / ball.m;
-            double im2 = 1 / oball.m;
+            double sum_m = ball1.m + ball2.m;
 
-            ball.p  += (im1 / (im1 + im2)) * min_trans_dist;
-            oball.p -= (im2 / (im1 + im2)) * min_trans_dist;
+            Vec u1 = ball1.v;
+            Vec u2 = ball2.v;
 
-            Vec deltav = ball.v - oball.v;
-            double vn = dot(deltav,min_trans_dist.normal());
+            ball1.v -=
+              (2*ball2.m / sum_m)
+              * (dot(u1 - u2,ball1.p - ball2.p) / norm(ball1.p - ball2.p))
+              * (ball1.p - ball2.p);
 
-            if (vn < 0)
-              {
-                const double restitution = 0.9;
-                double i = (-(1.0d + restitution) * vn) / (im1 + im2);
-                Vec impulse = i * min_trans_dist;
-                ball.v  += im1 * impulse;
-                oball.v -= im2 * impulse;
-              }
+            ball2.v -=
+              (2*ball1.m / sum_m)
+              * (dot(u2 - u1,ball2.p - ball1.p) / norm(ball2.p - ball1.p))
+              * (ball2.p - ball1.p);
 
-            ball.recent_collision  = make_pair(&oball,10);
-            oball.recent_collision = make_pair(&ball,10);
+            ball1.p += ((1/ball1.m) / (1/ball1.m+1/ball2.m)) * min_trans_dist;
+            ball2.p -= ((1/ball2.m) / (1/ball1.m+1/ball2.m)) * min_trans_dist;
+
+            ball1.recent_collision = make_pair(&ball2,3);
+            ball2.recent_collision = make_pair(&ball1,3);
           }
       });
   }
