@@ -73,12 +73,12 @@ public:
   {
     static std::uniform_real_distribution<double> pos_dist(0,1);
     static std::uniform_real_distribution<double> speed_dist(0.00001,0.0003);
-    static std::uniform_real_distribution<double> mass_dist(0.01,0.2);
+    static std::normal_distribution<double>       mass_dist(0.02,0.1);
 
     return {
         { pos_dist(rand_), pos_dist(rand_) },
         { speed_dist(rand_), speed_dist(rand_) },
-        mass_dist(rand_),
+          std::abs(mass_dist(rand_)),
         pos_dist(rand_),pos_dist(rand_),pos_dist(rand_)
     };
   }
@@ -155,6 +155,7 @@ protected:
           }
       }
 
+    /* Collisions. */
     foreach_two(begin(balls_),end(balls_),[](auto &ball1, auto &ball2) {
         if ((ball1.recent_collision.first == &ball2)
             || (ball2.recent_collision.first == &ball1))
@@ -191,6 +192,14 @@ protected:
             ball1.recent_collision = make_pair(&ball2,3);
             ball2.recent_collision = make_pair(&ball1,3);
           }
+      });
+
+    /* Effects of gravity. */
+    foreach_two(begin(balls_),end(balls_),[](auto &ball1, auto &ball2) {
+        Vec deltap = ball1.p - ball2.p;
+        Vec force  = 0.00001 * ((ball1.m + ball2.m) / sqr(deltap.len())) * deltap;
+        ball1.v += force;
+        ball2.v -= force;
       });
   }
 
