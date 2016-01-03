@@ -1,5 +1,6 @@
 #include <cairomm/context.h>
 #include <glibmm/main.h>
+#include <sstream>
 
 #include "balls.h"
 
@@ -23,7 +24,13 @@ bool Balls::on_draw(const Cairo::RefPtr<Cairo::Context>& cr)
       cr->fill();
       cr->stroke();
     }
+
   cr->restore();
+
+  const Ball &ball1 = balls_[balls_.size()-1];
+  std::ostringstream info;
+  info << "x = " << ball1.p.x << "\ny = " << ball1.p.y;
+  infobox_.show(cr,width,height,info.str());
 
   return true;
 }

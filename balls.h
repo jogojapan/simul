@@ -12,6 +12,7 @@
 #include <limits>
 
 #include "./vec2d.h"
+#include "./textbox.h"
 
 template <class It, class Func>
 void foreach_two(It beg, It end, Func &&func)
@@ -72,8 +73,8 @@ public:
   Ball random_ball()
   {
     static std::uniform_real_distribution<double> pos_dist(0,1);
-    static std::uniform_real_distribution<double> speed_dist(0.00001,0.0003);
-    static std::normal_distribution<double>       mass_dist(0.02,0.1);
+    static std::uniform_real_distribution<double> speed_dist(0.000001,0.00003);
+    static std::normal_distribution<double>       mass_dist(0.05,0.0);
 
     return {
         { pos_dist(rand_), pos_dist(rand_) },
@@ -86,12 +87,14 @@ public:
 
   Balls(seed_type seed, std::size_t n_balls = 10)
     : rand_(seed),
-      balls_(n_balls)
+      balls_(n_balls),
+      infobox_(*this,15,2)
   {
     Vec p { 0.08 , 0.0 };
 
     using std::make_pair;
     std::generate(begin(balls_),end(balls_),std::bind(&Balls::random_ball,this));
+    balls_.push_back(Ball { {0.5,0.5},{0.0,0.0},0.2,0.1,0.1,0.1 } );
 
     Glib::signal_timeout().connect(sigc::mem_fun(*this, &Balls::on_timeout),
                                    time_lapse);
@@ -157,6 +160,8 @@ protected:
 
     /* Collisions. */
     foreach_two(begin(balls_),end(balls_),[](auto &ball1, auto &ball2) {
+        static const double eps = numeric_limits<double>::epsilon();
+
         if ((ball1.recent_collision.first == &ball2)
             || (ball2.recent_collision.first == &ball1))
           return;
@@ -167,8 +172,13 @@ protected:
 
         if (sqr_dist < sqr_rad)
           {
+            if (sqr_dist < eps)
+              sqr_dist = eps;
+
             /* Collision of two balls. */
             double dist = ::sqrt(sqr_dist);
+            if (dist < eps)
+              dist = eps;
             Vec min_trans_dist = ((ball1.rad + ball2.rad - dist) / dist) * deltap;
 
             double sum_m = ball1.m + ball2.m;
@@ -197,9 +207,12 @@ protected:
     /* Effects of gravity. */
     foreach_two(begin(balls_),end(balls_),[](auto &ball1, auto &ball2) {
         Vec deltap = ball1.p - ball2.p;
-        Vec force  = 0.00001 * ((ball1.m + ball2.m) / sqr(deltap.len())) * deltap;
-        ball1.v += force;
-        ball2.v -= force;
+        if (deltap.len() > 0)
+          {
+            Vec force  = 0.00001 * ((ball1.m + ball2.m) / sqr(deltap.len())) * deltap;
+            ball1.v += force;
+            ball2.v -= force;
+          }
       });
   }
 
@@ -226,6 +239,7 @@ protected:
 
   std::default_random_engine rand_;
   std::vector<Ball>          balls_;
+  Textbox                    infobox_;
 };
 
 #endif // GTKMM_EXAMPLE_BALLS_H
