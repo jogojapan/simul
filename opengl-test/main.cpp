@@ -395,7 +395,7 @@ class Display
 {
 public:
   Display(int width, int height, const std::string &title)
-    : window_()
+    : window_(), isClosed_(false)
   {
     // How many bits of information about red, green, blue and
     // transparency components
@@ -494,8 +494,10 @@ int main()
       display.Clear(0.0,0.15,0.3,1.0);
 
       transform.pos_.x = std::sin(counter);
+      transform.pos_.z = 3 * std::sin(counter);
       // transform.scale_ = glm::vec3(counter,counter,counter);
       transform.rot_.z = counter * 5;
+      transform.rot_.y = counter;
 
       shader.Bind();
       texture.Bind(0);
