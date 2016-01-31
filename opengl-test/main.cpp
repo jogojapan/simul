@@ -19,6 +19,7 @@
 #include <glm/gtx/transform.hpp>
 
 #include <stb_image.h>
+#include "./obj_loader.h"
 
 class Vertex
 {
@@ -31,31 +32,58 @@ public:
 
   glm::vec3 pos_;
   glm::vec2 texCoord_;
+  glm::vec3 normals_;
 };
 
 class Mesh
 {
 public:
-  Mesh(Vertex *vertices, unsigned numVertices)
+  Mesh(Vertex *vertices,
+       unsigned numVertices,
+       unsigned int *indices,
+       unsigned int numIndices)
     : vertexArrayObject_(),
       vertexArrayBuffers(),
-      drawCount_(numVertices)
+      drawCount_(numIndices)
   {
-    glGenVertexArrays(1,&vertexArrayObject_);
-    glBindVertexArray(vertexArrayObject_);
 
+    IndexedModel model;
 
-    std::vector<glm::vec3> positions;
-    std::vector<glm::vec2> texCoords;
-
-    positions.reserve(numVertices);
-    texCoords.reserve(numVertices);
+    model.positions.reserve(numVertices);
+    model.texCoords.reserve(numVertices);
 
     for (unsigned i = 0 ; i < numVertices ; ++i)
       {
-        positions.push_back(vertices[i].pos_);
-        texCoords.push_back(vertices[i].texCoord_);
+        model.positions.push_back(vertices[i].pos_);
+        model.texCoords.push_back(vertices[i].texCoord_);
       }
+
+    model.indices.reserve(numIndices);
+    for (unsigned i = 0 ; i < numIndices ; ++i)
+      model.indices.push_back(indices[i]);
+
+
+    init_mesh(model);
+  }
+
+  Mesh(const std::string &filename)
+  {
+    IndexedModel model = OBJModel(filename).ToIndexedModel();
+    init_mesh(model);
+  }
+
+  virtual ~Mesh()
+  {
+    glDeleteVertexArrays(1,&vertexArrayObject_);
+  }
+
+
+  void init_mesh(const IndexedModel &model)
+  {
+    drawCount_ = model.indices.size();
+
+    glGenVertexArrays(1,&vertexArrayObject_);
+    glBindVertexArray(vertexArrayObject_);
 
     // Allocate buffer in GPU memory
     glGenBuffers(NUM_BUFFERS, vertexArrayBuffers);
@@ -64,8 +92,8 @@ public:
                  vertexArrayBuffers[POSITION_VB]);
     // Think of this as moving the data from regular RAM to GPU memory
     glBufferData(GL_ARRAY_BUFFER,
-                 numVertices * sizeof(glm::vec3),
-                 positions.data(),
+                 model.positions.size() * sizeof(model.positions[0]),
+                 model.positions.data(),
                  GL_STATIC_DRAW  // read-only data (may give rise to
                                  // optimizations)
                  );
@@ -81,26 +109,34 @@ public:
     glBindBuffer(GL_ARRAY_BUFFER,
                  vertexArrayBuffers[TEXCOORD_VB]);
     glBufferData(GL_ARRAY_BUFFER,
-                 numVertices * sizeof(glm::vec2),
-                 texCoords.data(),
+                 model.positions.size() * sizeof(model.texCoords[0]),
+                 model.texCoords.data(),
                  GL_STATIC_DRAW  // read-only data (may give rise to
                                  // optimizations)
                  );
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glBindVertexArray(0);
-  }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,
+                 vertexArrayBuffers[INDEX_VB]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 model.indices.size() * sizeof(model.indices[0]),
+                 model.indices.data(),
+                 GL_STATIC_DRAW  // read-only data (may give rise to
+                                 // optimizations)
+                 );
 
-  virtual ~Mesh()
-  {
-    glDeleteVertexArrays(1,&vertexArrayObject_);
+    glBindVertexArray(0);
   }
 
   void Draw()
   {
     glBindVertexArray(vertexArrayObject_);
-    glDrawArrays(GL_TRIANGLES, 0, drawCount_);
+    // glDrawArrays(GL_TRIANGLES, 0, drawCount_);
+    glDrawElements(GL_TRIANGLES,
+                   drawCount_,
+                   GL_UNSIGNED_INT,
+                   0);
     glBindVertexArray(0);
   }
 
@@ -109,6 +145,7 @@ private:
     {
       POSITION_VB,
       TEXCOORD_VB,
+      INDEX_VB,
 
       NUM_BUFFERS // keeping track of the number of enumeration values
     };
@@ -407,6 +444,9 @@ public:
     // How many bits to be allocated per pixel
     SDL_GL_SetAttribute(SDL_GL_BUFFER_SIZE, 32);
 
+    // Z buffer (aka depth buffer)
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+
     // Allocate space for a duplicate of the window (not actually
     // displayed)
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -422,6 +462,10 @@ public:
     GLenum status = glewInit();
     if (status != GLEW_OK)
       std::cerr << "Glew failed to initialized." << std::endl;
+
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
   }
 
   virtual ~Display()
@@ -445,7 +489,7 @@ public:
   void Clear(float r, float g, float b, float a)
   {
     glClearColor(r,g,b,a);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   }
 
   bool isClosed() const
@@ -473,19 +517,29 @@ int main()
 
   Display display(800,600,"Hello World");
 
-  Vertex vertices[] = { Vertex(glm::vec3(-0.5,-0.5,0), glm::vec2(0.0,0.0)),
-                        Vertex(glm::vec3(0,0.5,0), glm::vec2(0.5,1.0)),
-                        Vertex(glm::vec3(0.5,-0.5,0), glm::vec2(1.0,0.0))
-                       };
-  Mesh mesh(vertices, sizeof(vertices) / sizeof(Vertex));
+  // Vertex vertices[] = { Vertex(glm::vec3(-0.5,-0.5,0), glm::vec2(0.0,0.0)),
+  //                       Vertex(glm::vec3(0,0.5,0), glm::vec2(0.5,1.0)),
+  //                       Vertex(glm::vec3(0.5,-0.5,0), glm::vec2(1.0,0.0))
+  //                      };
+  // 
+  // unsigned int indices[] = { 0, 1, 2 };
+
+  // Mesh mesh(vertices,
+  //           sizeof(vertices) / sizeof(Vertex),
+  //           indices,
+  //           sizeof(indices) / sizeof(unsigned int));
+  Mesh mesh("./res/glider.obj");
+  std::cerr << "Loaded obj file." << std::endl;
   Shader shader("./res/basicShader");
   Texture texture("./res/bricks.jpg");
-  Camera camera(glm::vec3(0,0,-3),
+  Camera camera(glm::vec3(0,0,-40),
                 70.0f, // field of view approximately like that of the human eye
                 WIDTH / HEIGHT, // aspect ratio
                 0.01f,
                 1000.0f);
   Transform transform;
+  transform.rot_.x = M_PI / 2;
+  //transform.rot_.y = M_PI;
 
   float counter = 0.0;
 
@@ -493,11 +547,11 @@ int main()
     {
       display.Clear(0.0,0.15,0.3,1.0);
 
-      transform.pos_.x = std::sin(counter);
-      transform.pos_.z = 3 * std::sin(counter);
+      // transform.pos_.x = std::sin(counter);
+      // transform.pos_.z = std::sin(counter);
       // transform.scale_ = glm::vec3(counter,counter,counter);
-      transform.rot_.z = counter * 5;
-      transform.rot_.y = counter;
+      transform.rot_.z = counter;
+      transform.rot_.x = counter;
 
       shader.Bind();
       texture.Bind(0);
